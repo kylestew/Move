@@ -14,7 +14,7 @@ void alloc() {
 }
 
 void dealloc() {
-  
+  window_destroy(window);
 }
 
 int main(void) { 

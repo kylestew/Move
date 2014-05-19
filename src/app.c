@@ -1,166 +1,118 @@
-#include "pebble.h"
+#include <pebble.h>
+#include "arc_draw.h"
+#include "pedometer.h"
   
-static GBitmap* image;
-static BitmapLayer* background_layer;
-TextLayer* text_layer;
+#define CIRCLE_RADIUS           68
+#define CIRCLE_THICKNESS        14
+
+#define MINUTES_BEFORE_BREAK    20
+#define STEPS_UNTIL_RESET       20
+
+static Window* window;
+static Layer* pieLayer;
+//TextLayer* text_layer;
+static InverterLayer* invertLayer;
 //char buffer[] = "00:00";
+int32_t minutesUntilBreak;
 static AppTimer* timer;
+bool activityMode = false;
+
+
+void switchToCountdownMode() {
+  activityMode = false;
+
+  // shutdown accelerometer service
+  accel_data_service_unsubscribe();
   
+  // resets
+  pedometerCount = 0;
+  minutesUntilBreak = MINUTES_BEFORE_BREAK;
 
-// =========================================
-// == PEDOMETER ============================
-// =========================================
-// interval to check for next step (in ms)
-const int ACCEL_STEP_MS = 475;
-// value to auto adjust step acceptance 
-const int PED_ADJUST = 2;
-
-int X_DELTA = 35;
-int Y_DELTA, Z_DELTA = 185;
-int YZ_DELTA_MIN = 175;
-int YZ_DELTA_MAX = 195; 
-int X_DELTA_TEMP, Y_DELTA_TEMP, Z_DELTA_TEMP = 0;
-int lastX, lastY, lastZ, currX, currY, currZ = 0;
-int sensitivity = 1;
-
-long pedometerCount = 0;
-bool startedSession = false;
-bool did_pebble_vibrate = false;
-bool validX, validY, validZ = false;
-
-void autoCorrectZ(){
-	if (Z_DELTA > YZ_DELTA_MAX){
-		Z_DELTA = YZ_DELTA_MAX; 
-	} else if (Z_DELTA < YZ_DELTA_MIN){
-		Z_DELTA = YZ_DELTA_MIN;
-	}
+  inverter_layer_destroy(invertLayer);
+  layer_mark_dirty(pieLayer);
 }
 
-void autoCorrectY(){
-	if (Y_DELTA > YZ_DELTA_MAX){
-		Y_DELTA = YZ_DELTA_MAX; 
-	} else if (Y_DELTA < YZ_DELTA_MIN){
-		Y_DELTA = YZ_DELTA_MIN;
-	}
-}
-
-void pedometer_update() {
-	if (startedSession) {
-		X_DELTA_TEMP = abs(abs(currX) - abs(lastX));
-		if (X_DELTA_TEMP >= X_DELTA) {
-			validX = true;
-		}
-		Y_DELTA_TEMP = abs(abs(currY) - abs(lastY));
-		if (Y_DELTA_TEMP >= Y_DELTA) {
-			validY = true;
-			if (Y_DELTA_TEMP - Y_DELTA > 200){
-				autoCorrectY();
-				Y_DELTA = (Y_DELTA < YZ_DELTA_MAX) ? Y_DELTA + PED_ADJUST : Y_DELTA;
-			} else if (Y_DELTA - Y_DELTA_TEMP > 175){
-				autoCorrectY();
-				Y_DELTA = (Y_DELTA > YZ_DELTA_MIN) ? Y_DELTA - PED_ADJUST : Y_DELTA;
-			}
-		}
-		Z_DELTA_TEMP = abs(abs(currZ) - abs(lastZ));
-		if (abs(abs(currZ) - abs(lastZ)) >= Z_DELTA) {
-			validZ = true;
-			if (Z_DELTA_TEMP - Z_DELTA > 200){
-				autoCorrectZ();
-				Z_DELTA = (Z_DELTA < YZ_DELTA_MAX) ? Z_DELTA + PED_ADJUST : Z_DELTA;
-			} else if (Z_DELTA - Z_DELTA_TEMP > 175){
-				autoCorrectZ();
-				Z_DELTA = (Z_DELTA < YZ_DELTA_MAX) ? Z_DELTA + PED_ADJUST : Z_DELTA;
-			}
-		}
-	} else {
-		startedSession = true;
-	}  
-}
-
-void resetUpdate() {
-	lastX = currX;
-	lastY = currY;
-	lastZ = currZ;
-	validX = false;
-	validY = false;
-	validZ = false;
-}
-
-void update_activity_ui() {
-  if ((validX && validY && !did_pebble_vibrate) || (validX && validZ && !did_pebble_vibrate)) {
-		pedometerCount++;
-    
-    APP_LOG(APP_LOG_LEVEL_INFO, "STEPS: %ld", pedometerCount);
-  }
-  resetUpdate();
-}
-  
 static void check_activity_timer_callback(void* data) {
+  if (!activityMode)
+    return;
+  
   AccelData accel = (AccelData) { .x = 0, .y = 0, .z = 0 };
   accel_service_peek(&accel);
   
-  if (!startedSession) {
-		lastX = accel.x;
-		lastY = accel.y;
-		lastZ = accel.z;
-	} else {
-		currX = accel.x;
-		currY = accel.y;
-		currZ = accel.z;
-	}
+  pedometer_update(accel);
+  layer_mark_dirty(pieLayer);
   
-  // discard data if watch was vibrating
-  did_pebble_vibrate = accel.did_vibrate;
-  
-  pedometer_update();
-  update_activity_ui();
-  
-  timer = app_timer_register(ACCEL_STEP_MS , check_activity_timer_callback, NULL);  
+  if (pedometerCount > STEPS_UNTIL_RESET) {
+    switchToCountdownMode();
+  } else {
+    timer = app_timer_register(ACCEL_STEP_MS , check_activity_timer_callback, NULL);      
+  }
 }
-// =========================================
 
-
-
-
-
-void timer_callback(void* data) {
-  // timer fired, annoy the user until they start moving
-  vibes_long_pulse();
+void switchToMoveMode() {
+  if (activityMode == true)
+    return;
+  activityMode = true;
   
-  // TODO: switch UI mode
-
+  // invert UI
+  layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(invertLayer));
+  
+  // TODO: change text
+  
   // == START PEDOMETER ==
   // start looking for continous motion
   accel_data_service_subscribe(0, NULL);
-  timer = app_timer_register(ACCEL_STEP_MS, check_activity_timer_callback, NULL);  
+  timer = app_timer_register(ACCEL_STEP_MS, check_activity_timer_callback, NULL); 
 }
 
-// update clock UI
-//void tick_handler(struct tm* tick_time, TimeUnits units_changed) {
+static void pieLayerRenderCallback(Layer* me, GContext *ctx) {
+  GPoint center = GPoint(72, 72);
+  int start, end;
+  if (activityMode) {
+    start = angle_270;
+    int sweep = pedometerCount * (TRIG_MAX_ANGLE / STEPS_UNTIL_RESET);
+    sweep = sweep > TRIG_MAX_ANGLE ? TRIG_MAX_ANGLE : sweep; // max out angle swept
+    sweep = sweep == 0 ? angle_270 + angle_90 : sweep;
+    end = start - sweep;
+  } else {
+    start = -angle_90;
+    int sweep = minutesUntilBreak * (TRIG_MAX_ANGLE / MINUTES_BEFORE_BREAK);
+    sweep = sweep > TRIG_MAX_ANGLE ? TRIG_MAX_ANGLE : sweep; // max out angle swept
+    end = sweep + start;
+  }
+  graphics_draw_arc(ctx, center, CIRCLE_RADIUS, CIRCLE_THICKNESS, start, end, GColorWhite);
+}
+
+static void handleTick(struct tm *tick_time, TimeUnits units_changed) {
+  minutesUntilBreak++;
+  if (minutesUntilBreak >= MINUTES_BEFORE_BREAK) {
+    // TODO: annoy user every 1 minute until they finish their exercise
+//    vibes_long_pulse();
+    
+    switchToMoveMode();
+  } else {
+    layer_mark_dirty(pieLayer);    
+  }
+  
+  // TODO: update time display
 //  strftime(buffer, sizeof("00:00"), "%H:%M", tick_time);
 //  text_layer_set_text(text_layer, buffer);  
-//}
-
-void setup() {
-  // TEMP
-  timer_callback(NULL);
-  
-  
-//  // countdown timer
-//  timer = app_timer_register(1000 * 30 * 1, timer_callback, NULL);
-//
-//  // track time for clock
-//  tick_timer_service_subscribe(MINUTE_UNIT, (TickHandler)tick_handler);
 }
 
-void window_load(Window* window) {
-  // background
-//  image = gbitmap_create_with_resource(RESOURCE_ID_BACKGROUND);
-// Layer* window_layer = window_get_root_layer(window);
-//  GRect bounds = layer_get_frame(window_layer);
-//  background_layer = bitmap_layer_create(bounds);
-//  bitmap_layer_set_bitmap(background_layer, image);
-//  layer_add_child(window_layer, bitmap_layer_get_layer(background_layer));
+void setup() {
+  // TODO: change to minutes
+  tick_timer_service_subscribe(SECOND_UNIT, (TickHandler)handleTick);
+}
+
+void window_load(Window* w) {
+  window = w;
+  window_set_background_color(window, GColorBlack);
+
+  // pie-arc layer
+  GRect bounds = GRect(0, 24, 144, 144);
+  pieLayer = layer_create(bounds);
+  layer_set_update_proc(pieLayer, pieLayerRenderCallback);
+  layer_add_child(window_get_root_layer(window), pieLayer);
   
 //  // time text
 //  text_layer = text_layer_create(GRect(0, 58, 143, 168 - 58));
@@ -169,11 +121,13 @@ void window_load(Window* window) {
 //  text_layer_set_text_alignment(text_layer, GTextAlignmentCenter);
 //  text_layer_set_font(text_layer, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));  
 //  layer_add_child(window_get_root_layer(window), (Layer*)text_layer);
+  
+  // inverter layer (prepare)
+  invertLayer = inverter_layer_create(bounds);
 }
 
 void window_unload(Window* window) {
-//  tick_timer_service_unsubscribe();
-//  text_layer_destroy(text_layer);
-//  gbitmap_destroy(image);
-//  bitmap_layer_destroy(background_layer);
+  tick_timer_service_unsubscribe();
+  layer_destroy(pieLayer);
+  inverter_layer_destroy(invertLayer);
 }
