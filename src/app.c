@@ -6,13 +6,12 @@
 #define CIRCLE_THICKNESS        14
 
 #define MINUTES_BEFORE_BREAK    20
-#define STEPS_UNTIL_RESET       20
+#define STEPS_UNTIL_RESET       40
 
 static Window* window;
 static Layer* pieLayer;
-//TextLayer* text_layer;
+TextLayer* textLayer;
 static InverterLayer* invertLayer;
-//char buffer[] = "00:00";
 int32_t minutesUntilBreak;
 static AppTimer* timer;
 bool activityMode = false;
@@ -20,13 +19,16 @@ bool activityMode = false;
 
 void switchToCountdownMode() {
   activityMode = false;
+  
+  APP_LOG(APP_LOG_LEVEL_INFO, "switched to countdown mode");
+
 
   // shutdown accelerometer service
   accel_data_service_unsubscribe();
   
   // resets
   pedometerCount = 0;
-  minutesUntilBreak = MINUTES_BEFORE_BREAK;
+  minutesUntilBreak = 0;
 
   inverter_layer_destroy(invertLayer);
   layer_mark_dirty(pieLayer);
@@ -35,6 +37,9 @@ void switchToCountdownMode() {
 static void check_activity_timer_callback(void* data) {
   if (!activityMode)
     return;
+  
+    APP_LOG(APP_LOG_LEVEL_INFO, "accel ping");
+
   
   AccelData accel = (AccelData) { .x = 0, .y = 0, .z = 0 };
   accel_service_peek(&accel);
@@ -53,6 +58,9 @@ void switchToMoveMode() {
   if (activityMode == true)
     return;
   activityMode = true;
+  vibes_long_pulse(); // signal user mode switch
+  
+  APP_LOG(APP_LOG_LEVEL_INFO, "switched to move mode");
   
   // invert UI
   layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(invertLayer));
@@ -84,24 +92,28 @@ static void pieLayerRenderCallback(Layer* me, GContext *ctx) {
 }
 
 static void handleTick(struct tm *tick_time, TimeUnits units_changed) {
-  minutesUntilBreak++;
-  if (minutesUntilBreak >= MINUTES_BEFORE_BREAK) {
-    // TODO: annoy user every 1 minute until they finish their exercise
-//    vibes_long_pulse();
-    
-    switchToMoveMode();
+  if (activityMode == true) {
+    // MODE: active
+    // annoy user every 1 minute until they finish their exercise
+    vibes_double_pulse();
   } else {
+    // countdown
+    minutesUntilBreak++;
+    if (minutesUntilBreak >= MINUTES_BEFORE_BREAK)
+      switchToMoveMode();
     layer_mark_dirty(pieLayer);    
   }
   
-  // TODO: update time display
-//  strftime(buffer, sizeof("00:00"), "%H:%M", tick_time);
-//  text_layer_set_text(text_layer, buffer);  
+  // update clock
+  static char timeBuffer[10];
+  clock_copy_time_string(timeBuffer, sizeof(timeBuffer));
+  text_layer_set_text(textLayer, timeBuffer);  
 }
 
 void setup() {
   // TODO: change to minutes
-  tick_timer_service_subscribe(SECOND_UNIT, (TickHandler)handleTick);
+  tick_timer_service_subscribe(MINUTE_UNIT, (TickHandler)handleTick);
+  handleTick(NULL, MINUTE_UNIT);
 }
 
 void window_load(Window* w) {
@@ -114,13 +126,13 @@ void window_load(Window* w) {
   layer_set_update_proc(pieLayer, pieLayerRenderCallback);
   layer_add_child(window_get_root_layer(window), pieLayer);
   
-//  // time text
-//  text_layer = text_layer_create(GRect(0, 58, 143, 168 - 58));
-//  text_layer_set_background_color(text_layer, GColorClear);
-//  text_layer_set_text_color(text_layer, GColorWhite);
-//  text_layer_set_text_alignment(text_layer, GTextAlignmentCenter);
-//  text_layer_set_font(text_layer, fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD));  
-//  layer_add_child(window_get_root_layer(window), (Layer*)text_layer);
+  // time text
+  textLayer = text_layer_create(GRect(0, 0, 145, 24));
+  text_layer_set_background_color(textLayer, GColorClear);
+  text_layer_set_text_color(textLayer, GColorWhite);
+  text_layer_set_text_alignment(textLayer, GTextAlignmentCenter);
+  text_layer_set_font(textLayer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
+  layer_add_child(window_get_root_layer(window), (Layer*)textLayer);
   
   // inverter layer (prepare)
   invertLayer = inverter_layer_create(bounds);
@@ -129,5 +141,5 @@ void window_load(Window* w) {
 void window_unload(Window* window) {
   tick_timer_service_unsubscribe();
   layer_destroy(pieLayer);
-  inverter_layer_destroy(invertLayer);
+  text_layer_destroy(textLayer);
 }

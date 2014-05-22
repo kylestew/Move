@@ -1,24 +1,24 @@
 {
-    "uuid": "75e7a207-e774-4d0d-a534-b1d38e70fa33",
     "versionLabel": "1.0",
-    "companyName": "kylestew@gmail.com",
     "capabilities": [
         ""
     ],
     "shortName": "Move",
     "longName": "Move",
     "versionCode": 1,
-    "watchapp": {
-        "watchface": true
-    },
-    "appKeys": {},
+    "uuid": "75e7a207-e774-4d0d-a534-b1d38e70fa33",
     "resources": {
         "media": [
             {
                 "type": "png",
-                "name": "BACKGROUND",
-                "file": "images/background.png"
+                "file": "images/background.png",
+                "name": "BACKGROUND"
             }
         ]
-    }
+    },
+    "watchapp": {
+        "watchface": true
+    },
+    "appKeys": {},
+    "companyName": "kylestew@gmail.com"
 }
