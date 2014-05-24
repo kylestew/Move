@@ -1,24 +1,29 @@
 {
-    "versionLabel": "1.0",
-    "capabilities": [
-        ""
-    ],
-    "shortName": "Move",
-    "longName": "Move",
-    "versionCode": 1,
-    "uuid": "75e7a207-e774-4d0d-a534-b1d38e70fa33",
     "resources": {
         "media": [
             {
-                "type": "png",
+                "file": "fonts/American_Captain_54.ttf",
+                "type": "font",
+                "name": "FONT_AMERICAN_CAPTAIN_54"
+            },
+            {
                 "file": "images/background.png",
+                "type": "png",
                 "name": "BACKGROUND"
             }
         ]
     },
+    "capabilities": [
+        ""
+    ],
+    "uuid": "75e7a207-e774-4d0d-a534-b1d38e70fa33",
+    "shortName": "Move",
+    "versionCode": 1,
+    "companyName": "kylestew@gmail.com",
+    "appKeys": {},
+    "longName": "Move",
+    "versionLabel": "1.0",
     "watchapp": {
         "watchface": true
-    },
-    "appKeys": {},
-    "companyName": "kylestew@gmail.com"
+    }
 }

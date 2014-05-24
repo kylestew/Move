@@ -11,8 +11,9 @@
 static Window* window;
 static Layer* pieLayer;
 TextLayer* textLayer;
+TextLayer* displayTextLayer;
 static InverterLayer* invertLayer;
-int32_t minutesUntilBreak;
+int minutesUntilBreak;
 static AppTimer* timer;
 bool activityMode = false;
 
@@ -65,7 +66,8 @@ void switchToMoveMode() {
   // invert UI
   layer_add_child(window_get_root_layer(window), inverter_layer_get_layer(invertLayer));
   
-  // TODO: change text
+  // update display
+  text_layer_set_text(displayTextLayer, "MOVE");  
   
   // == START PEDOMETER ==
   // start looking for continous motion
@@ -78,7 +80,7 @@ static void pieLayerRenderCallback(Layer* me, GContext *ctx) {
   int start, end;
   if (activityMode) {
     start = angle_270;
-    int sweep = pedometerCount * (TRIG_MAX_ANGLE / STEPS_UNTIL_RESET);
+    int sweep = (pedometerCount + 1) * (TRIG_MAX_ANGLE / STEPS_UNTIL_RESET);
     sweep = sweep > TRIG_MAX_ANGLE ? TRIG_MAX_ANGLE : sweep; // max out angle swept
     sweep = sweep == 0 ? angle_270 + angle_90 : sweep;
     end = start - sweep;
@@ -99,8 +101,14 @@ static void handleTick(struct tm *tick_time, TimeUnits units_changed) {
   } else {
     // countdown
     minutesUntilBreak++;
+    
+    static char displayBuffer[3];
+    snprintf(displayBuffer, sizeof(displayBuffer), "%d", MINUTES_BEFORE_BREAK - minutesUntilBreak);
+    text_layer_set_text(displayTextLayer, displayBuffer);  
+    
     if (minutesUntilBreak >= MINUTES_BEFORE_BREAK)
       switchToMoveMode();
+    
     layer_mark_dirty(pieLayer);    
   }
   
@@ -111,7 +119,6 @@ static void handleTick(struct tm *tick_time, TimeUnits units_changed) {
 }
 
 void setup() {
-  // TODO: change to minutes
   tick_timer_service_subscribe(MINUTE_UNIT, (TickHandler)handleTick);
   handleTick(NULL, MINUTE_UNIT);
 }
@@ -125,6 +132,15 @@ void window_load(Window* w) {
   pieLayer = layer_create(bounds);
   layer_set_update_proc(pieLayer, pieLayerRenderCallback);
   layer_add_child(window_get_root_layer(window), pieLayer);
+  
+  // center display text
+  displayTextLayer = text_layer_create(GRect(0, 62, 145, 64));
+  text_layer_set_background_color(displayTextLayer, GColorClear);
+  text_layer_set_text_color(displayTextLayer, GColorWhite);
+  text_layer_set_text_alignment(displayTextLayer, GTextAlignmentCenter);
+  GFont custom_font = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_AMERICAN_CAPTAIN_54));
+  text_layer_set_font(displayTextLayer, custom_font);
+  layer_add_child(window_get_root_layer(window), (Layer*)displayTextLayer);
   
   // time text
   textLayer = text_layer_create(GRect(0, 0, 145, 24));
@@ -142,4 +158,5 @@ void window_unload(Window* window) {
   tick_timer_service_unsubscribe();
   layer_destroy(pieLayer);
   text_layer_destroy(textLayer);
+  text_layer_destroy(displayTextLayer);
 }
