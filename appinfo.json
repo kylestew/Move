@@ -1,4 +1,13 @@
 {
+    "versionLabel": "1.0",
+    "longName": "Move",
+    "shortName": "Move",
+    "capabilities": [
+        ""
+    ],
+    "watchapp": {
+        "watchface": true
+    },
     "resources": {
         "media": [
             {
@@ -13,17 +22,8 @@
             }
         ]
     },
-    "capabilities": [
-        ""
-    ],
     "uuid": "75e7a207-e774-4d0d-a534-b1d38e70fa33",
-    "shortName": "Move",
     "versionCode": 1,
     "companyName": "kylestew@gmail.com",
-    "appKeys": {},
-    "longName": "Move",
-    "versionLabel": "1.0",
-    "watchapp": {
-        "watchface": true
-    }
+    "appKeys": {}
 }
